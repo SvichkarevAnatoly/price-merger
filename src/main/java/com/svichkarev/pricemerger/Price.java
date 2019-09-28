@@ -3,6 +3,9 @@ package com.svichkarev.pricemerger;
 import java.util.Date;
 import java.util.Objects;
 
+/**
+ * Модель цены
+ */
 public class Price {
 
     private long id; // идентификатор в БД
@@ -12,6 +15,15 @@ public class Price {
     private Date begin; // начало действия
     private Date end; // конец действия
     private long value; // значение цены в копейках
+
+    public Price(String productCode, int number, int depart, Date begin, Date end, long value) {
+        this.productCode = productCode;
+        this.number = number;
+        this.depart = depart;
+        this.begin = begin;
+        this.end = end;
+        this.value = value;
+    }
 
     public Price(long id, String productCode, int number, int depart, Date begin, Date end, long value) {
         this.id = id;
@@ -69,8 +81,7 @@ public class Price {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         Price price = (Price) o;
-        return id == price.id &&
-                number == price.number &&
+        return number == price.number &&
                 depart == price.depart &&
                 value == price.value &&
                 productCode.equals(price.productCode) &&
@@ -80,6 +91,6 @@ public class Price {
 
     @Override
     public int hashCode() {
-        return Objects.hash(id, productCode, number, depart, begin, end, value);
+        return Objects.hash(productCode, number, depart, begin, end, value);
     }
 }
