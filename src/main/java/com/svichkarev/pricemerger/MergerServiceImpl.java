@@ -1,6 +1,8 @@
 package com.svichkarev.pricemerger;
 
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -18,7 +20,109 @@ public class MergerServiceImpl implements MergerService {
         final List<Price> mergedPrices = new ArrayList<>(existingPrices.size());
         mergedPrices.addAll(getUniquePrices(newPricesMap, existingPricesMap));
 
+        for (Map.Entry<PriceKey, List<Price>> entry : newPricesMap.entrySet()) {
+            if (!existingPricesMap.containsKey(entry.getKey())) {
+                continue;
+            }
+            final List<Price> commonNewPrices = entry.getValue();
+            final List<Price> commonExistingPrices = existingPricesMap.get(entry.getKey());
+
+            mergedPrices.addAll(mergeCommonPrices(commonNewPrices, commonExistingPrices));
+        }
+
         return mergedPrices;
+    }
+
+    /**
+     * Слияние общих цен
+     *
+     * @param newPrices      Коллекция новых цен
+     * @param existingPrices Коллекция имеющихся цен
+     * @return Объединённые цены
+     */
+    List<Price> mergeCommonPrices(List<Price> newPrices, List<Price> existingPrices) {
+        List<Point> pricePoints = getSortedPriceTimePoints(newPrices, existingPrices);
+        return restoreMergedPrices(pricePoints, newPrices.get(0));
+    }
+
+    private List<Point> getSortedPriceTimePoints(List<Price> newPrices, List<Price> existingPrices) {
+        List<Point> pricePoints = new ArrayList<>(existingPrices.size() * 2);
+        for (Price newPrice : newPrices) {
+            pricePoints.add(new Point(newPrice.getBegin(), Point.Type.BEGIN, Point.Generation.NEW, newPrice.getValue()));
+            pricePoints.add(new Point(newPrice.getEnd(), Point.Type.END, Point.Generation.NEW, newPrice.getValue()));
+        }
+        for (Price existingPrice : existingPrices) {
+            pricePoints.add(new Point(existingPrice.getBegin(), Point.Type.BEGIN, Point.Generation.EXISTING, existingPrice.getValue()));
+            pricePoints.add(new Point(existingPrice.getEnd(), Point.Type.END, Point.Generation.EXISTING, existingPrice.getValue()));
+        }
+        pricePoints.sort(Comparator.comparing(p -> p.time));
+        return pricePoints;
+    }
+
+    private List<Price> restoreMergedPrices(List<Point> pricePoints, Price priceAttributes) {
+        final List<Price> mergedPrices = new ArrayList<>();
+        Point begin = pricePoints.get(0);
+        for (int i = 1; i < pricePoints.size(); i++) {
+            final Point current = pricePoints.get(i);
+            if (begin.type == Point.Type.END
+                    && current.type == Point.Type.BEGIN) {
+                begin = current;
+                continue;
+            }
+
+            if (current.generation == Point.Generation.NEW) {
+                if (current.value == begin.value && current.type == Point.Type.BEGIN) {
+                    begin.generation = Point.Generation.NEW;
+                } else {
+                    addRestoredPrice(mergedPrices, priceAttributes, begin, current, begin.value);
+                    begin = current;
+                }
+            } else {
+                if (begin.generation == Point.Generation.NEW
+                        && (begin.type == Point.Type.BEGIN || current.type != Point.Type.END)) {
+                    continue;
+                }
+
+                long value = current.type == Point.Type.END ? current.value : begin.value;
+                addRestoredPrice(mergedPrices, priceAttributes, begin, current, value);
+
+                begin = current;
+            }
+        }
+        return mergedPrices;
+    }
+
+    private void addRestoredPrice(List<Price> mergedPrices, Price priceAttributes, Point begin, Point end, long value) {
+        if (end.time.equals(begin.time)) {
+            return;
+        }
+        mergedPrices.add(new Price(
+                priceAttributes.getId(), priceAttributes.getProductCode(),
+                priceAttributes.getNumber(), priceAttributes.getDepart(),
+                begin.time, end.time, value
+        ));
+    }
+
+    private static class Point {
+        enum Type {
+            BEGIN, END
+        }
+
+        enum Generation {
+            NEW, EXISTING
+        }
+
+        Date time;
+        Type type;
+        Generation generation;
+        long value;
+
+        public Point(Date time, Type type, Generation generation, long value) {
+            this.time = time;
+            this.type = type;
+            this.generation = generation;
+            this.value = value;
+        }
     }
 
     /**
